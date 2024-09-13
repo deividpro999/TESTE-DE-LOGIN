@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const mysql = require('mysql');
+require('dotenv').config();
 
 const app = express();
 const port = 3000;
@@ -12,13 +13,16 @@ app.use(express.json());
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'sua_senha',
+    password: process.env.DB_PASSWORD,
     database: 'devstream'
 });
 
 // Conectar ao banco de dados
 db.connect(err => {
-    if (err) throw err;
+    if (err) {
+        console.error('Erro ao conectar ao banco de dados:', err);
+        return;
+    }
     console.log('Conectado ao banco de dados!');
 });
 
@@ -26,22 +30,29 @@ db.connect(err => {
 app.post('/login', (req, res) => {
     const { email, password } = req.body;
 
-    // Verificar se o usuário existe no banco de dados
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email e senha são obrigatórios' });
+    }
+
     db.query('SELECT * FROM users WHERE email = ?', [email], (err, result) => {
-        if (err) throw err;
+        if (err) {
+            console.error('Erro na consulta ao banco de dados:', err);
+            return res.status(500).json({ message: 'Erro interno do servidor' });
+        }
         if (result.length === 0) {
             return res.status(400).json({ message: 'Usuário não encontrado' });
         }
 
         const user = result[0];
 
-        // Comparar a senha enviada com a armazenada
         bcrypt.compare(password, user.password, (err, match) => {
-            if (err) throw err;
+            if (err) {
+                console.error('Erro ao comparar senha:', err);
+                return res.status(500).json({ message: 'Erro interno do servidor' });
+            }
 
             if (match) {
-                // Gerar token JWT
-                const token = jwt.sign({ id: user.id, email: user.email }, 'seu_segredo_jwt', { expiresIn: '1h' });
+                const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' });
                 return res.json({ message: 'Login bem-sucedido', token });
             } else {
                 return res.status(400).json({ message: 'Senha incorreta' });
@@ -54,20 +65,30 @@ app.post('/login', (req, res) => {
 app.post('/register', (req, res) => {
     const { email, password } = req.body;
 
-    // Verificar se o usuário já existe
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email e senha são obrigatórios' });
+    }
+
     db.query('SELECT * FROM users WHERE email = ?', [email], (err, result) => {
-        if (err) throw err;
+        if (err) {
+            console.error('Erro na consulta ao banco de dados:', err);
+            return res.status(500).json({ message: 'Erro interno do servidor' });
+        }
         if (result.length > 0) {
             return res.status(400).json({ message: 'Usuário já existe' });
         }
 
-        // Criptografar a senha
         bcrypt.hash(password, 10, (err, hash) => {
-            if (err) throw err;
+            if (err) {
+                console.error('Erro ao criptografar a senha:', err);
+                return res.status(500).json({ message: 'Erro interno do servidor' });
+            }
 
-            // Inserir o usuário no banco de dados
             db.query('INSERT INTO users (email, password) VALUES (?, ?)', [email, hash], (err, result) => {
-                if (err) throw err;
+                if (err) {
+                    console.error('Erro ao inserir usuário no banco de dados:', err);
+                    return res.status(500).json({ message: 'Erro interno do servidor' });
+                }
                 res.json({ message: 'Usuário registrado com sucesso' });
             });
         });
